@@ -1,2 +1,2 @@
 netfilter-test
-netfilter-test.o
+*.o
