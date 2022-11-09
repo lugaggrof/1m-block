@@ -1,3 +1,6 @@
 import requests
-res = requests.get('http://test.gilgil.net')
-print(res.data[:30])
+URL = 'http://test.gilgil.net'
+response = requests.get(URL)
+print(response.status_code)
+print(response.text[:35])
+

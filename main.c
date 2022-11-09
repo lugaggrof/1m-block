@@ -17,9 +17,20 @@ int check(unsigned char *data) {
 	if(ipv4_hdr->ip_v != 4 || ipv4_hdr->ip_hl != 5) {
 		return 0;
 	}
+	char *host_prefix = "Host: ";
+	// check data host == host
+	data += sizeof(struct libnet_ipv4_hdr);
+	data += sizeof(struct libnet_tcp_hdr);
+	char* data_host = strstr(data, host_prefix);
 
-	// check host
-	return 1;
+	if(data_host != NULL) {
+		size_t host_len = strlen(host);
+		if (strncmp(data_host + strlen(host_prefix), host, host_len) == 0) {
+			printf("%s detected, drop\n", host);
+			return 1;
+		}
+	}
+	return 0;
 }
 
 /* returns packet id */
@@ -39,11 +50,7 @@ static u_int32_t is_pkt_match(struct nfq_data *tb, int *is_check)
 
 	ret = nfq_get_payload(tb, &data);
 
-	if (check(data)) {
-		*is_check = 1;
-	} else {
-		*is_check = 0;
-	}
+	*is_check = check(data);
 
 	return id;
 }
@@ -54,7 +61,6 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 {
 	int is_check;
 	u_int32_t id = is_pkt_match(nfa, &is_check);
-	printf("entering callback\n");
 	
 	return nfq_set_verdict(qh, id, is_check ? NF_DROP : NF_ACCEPT, 0, NULL);
 }
