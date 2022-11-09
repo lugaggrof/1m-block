@@ -7,9 +7,23 @@
 #include <errno.h>
 
 #include <libnetfilter_queue/libnetfilter_queue.h>
+#include <libnet.h>
+
+char *host;
+
+int check(unsigned char *data) {
+	// check is ipv4
+	struct libnet_ipv4_hdr* ipv4_hdr = (struct libnet_ipv4_hdr*)data;
+	if(ipv4_hdr->ip_v != 4 || ipv4_hdr->ip_hl != 5) {
+		return 0;
+	}
+
+	// check host
+	return 1;
+}
 
 /* returns packet id */
-static u_int32_t print_pkt (struct nfq_data *tb)
+static u_int32_t is_pkt_match(struct nfq_data *tb, int *is_check)
 {
 	int id = 0;
 	struct nfqnl_msg_packet_hdr *ph;
@@ -21,25 +35,15 @@ static u_int32_t print_pkt (struct nfq_data *tb)
 	ph = nfq_get_msg_packet_hdr(tb);
 	if (ph) {
 		id = ntohl(ph->packet_id);
-		printf("hw_protocol=0x%04x hook=%u id=%u ",
-			ntohs(ph->hw_protocol), ph->hook, id);
-	}
-
-	hwph = nfq_get_packet_hw(tb);
-	if (hwph) {
-		int i, hlen = ntohs(hwph->hw_addrlen);
-
-		printf("hw_src_addr=");
-		for (i = 0; i < hlen-1; i++)
-			printf("%02x:", hwph->hw_addr[i]);
-		printf("%02x ", hwph->hw_addr[hlen-1]);
 	}
 
 	ret = nfq_get_payload(tb, &data);
-	if (ret >= 0)
-		printf("payload_len=%d\n", ret);
 
-	fputc('\n', stdout);
+	if (check(data)) {
+		*is_check = 1;
+	} else {
+		*is_check = 0;
+	}
 
 	return id;
 }
@@ -48,9 +52,11 @@ static u_int32_t print_pkt (struct nfq_data *tb)
 static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 	      struct nfq_data *nfa, void *data)
 {
-	u_int32_t id = print_pkt(nfa);
+	int is_check;
+	u_int32_t id = is_pkt_match(nfa, &is_check);
 	printf("entering callback\n");
-	return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+	
+	return nfq_set_verdict(qh, id, is_check ? NF_DROP : NF_ACCEPT, 0, NULL);
 }
 
 int main(int argc, char **argv)
@@ -61,6 +67,12 @@ int main(int argc, char **argv)
 	int fd;
 	int rv;
 	char buf[4096] __attribute__ ((aligned));
+
+	if (argc != 2) {
+		printf("syntax : netfilter-test <host>\nsample : netfilter-test test.gilgil.net\n");
+		exit(1);
+	}
+	host = argv[1];
 
 	printf("opening library handle\n");
 	h = nfq_open();
